@@ -429,14 +429,21 @@ def untokenize_without_unks(batch_predictions, batch_lengths, vocab, batch_clean
     unktoken = vocab["token2idx"][vocab["unk_token"]]
     assert len(batch_predictions) == len(batch_lengths) == len(batch_clean_sentences)
     batch_clean_sentences = [sent.split() for sent in batch_clean_sentences]
+    #print("------")
+    #print(batch_predictions)
+    #print(batch_lengths)
+    #print(batch_clean_sentences)
+    
     if backoff == "pass-through":
         batch_predictions = \
-            [" ".join([idx2token[idx] if idx != unktoken else clean_[i] for i, idx in enumerate(pred_[:len_])]) \
+            [" ".join([idx2token[idx] if idx != unktoken and idx != 1 else clean_[i] for i, idx in enumerate(pred_[:len_])]) \
              for pred_, len_, clean_ in zip(batch_predictions, batch_lengths, batch_clean_sentences)]
     elif backoff == "neutral":
         batch_predictions = \
             [" ".join([idx2token[idx] if idx != unktoken else "a" for i, idx in enumerate(pred_[:len_])]) \
              for pred_, len_, clean_ in zip(batch_predictions, batch_lengths, batch_clean_sentences)]
+    
+    # print("BATCH PREDICTIONS: ", batch_predictions)
     return batch_predictions
 
 
@@ -653,8 +660,9 @@ def _simple_bert_tokenize_sentences(list_of_texts):
 
 
 
-def masking_reserved_words(reserved_words, inputs):
-  #print("Input: ", inputs)
+def masking_reserved_words(reserved_words, inputs, attention_mask):
+  # print("Input: ", inputs)
+  # print("Attention mask: ", attention_mask)
   random = torch.rand(inputs.shape)
 
   reserved_word_tokenized, _, _ = _custom_bert_tokenize_sentences(RESERVED_WORDS)
@@ -663,24 +671,25 @@ def masking_reserved_words(reserved_words, inputs):
 
   for i in range(inputs.size()[0]):
     word = inputs[i]
-
     if word in reserved_tokens:
       random[i] = inputs[i]
     else:
       random[i] = 0
 
   mask_arr = (random > 1) * (inputs != 101) * (inputs != 102) * (inputs != 0) * (inputs != 117)
-  
-  # mask_arr = (random > 1)  * (inputs != 100000) * (inputs != 2)
   # mask_arr = (random > 1) * (inputs != CLS) * (inputs != SEP) * (inputs != <<PAD>>) * (inputs != ,)
 
   selection = torch.flatten(mask_arr.nonzero(as_tuple=False)).tolist()
-  inputs[selection] = 100 # 100001 <<UNK>>
+  inputs[selection] = 103 # 103 = [MASK]
+  attention_mask[selection] = 0
+
   masked_input = inputs
-  #print("Masked input: ", masked_input)
+  masked_attention_mask = attention_mask
 
-  return masked_input
+  # print("Masked input: ", masked_input)
+  # print("Masked attention mask: ", attention_mask)
 
+  return masked_input, attention_mask
 
 def bert_tokenize(batch_sentences):
     """
@@ -781,22 +790,24 @@ def bert_tokenize_for_valid_examples(batch_orginal_sentences, batch_noisy_senten
 
     if len(valid_idxs) > 0:
         batch_encoded_dicts = [BERT_TOKENIZER.encode_plus(tokens) for tokens in batch_tokens]
-        batch_attention_masks = pad_sequence(
-            [torch.tensor(encoded_dict["attention_mask"]) for encoded_dict in batch_encoded_dicts], batch_first=True,
-            padding_value=0)
+        
+        # batch_attention_masks = pad_sequence(
+        #     [torch.tensor(encoded_dict["attention_mask"]) for encoded_dict in batch_encoded_dicts], batch_first=True,
+        #     padding_value=0)
 
         #batch_input_ids = pad_sequence(
         #  [torch.tensor(encoded_dict["input_ids"]) for encoded_dict in batch_encoded_dicts], batch_first=True,
         #  padding_value=0)
 
- 
-        batch_input_ids = pad_sequence(
-            [masking_reserved_words(RESERVED_WORDS, torch.tensor(encoded_dict["input_ids"])) for encoded_dict in batch_encoded_dicts], 
-                               batch_first=True, padding_value=0)
-        
+        batch_input_ids, batch_attention_masks = map(list, zip(*[masking_reserved_words(RESERVED_WORDS, torch.tensor(encoded_dict["input_ids"]), torch.tensor(encoded_dict["attention_mask"])) for encoded_dict in batch_encoded_dicts]))
+
+        batch_input_ids = pad_sequence(batch_input_ids, batch_first=True, padding_value=0) 
+        batch_attention_masks = pad_sequence(batch_attention_masks, batch_first=True, padding_value=0) 
+
         # batch_token_type_ids = pad_sequence(
         #     [torch.tensor(encoded_dict["token_type_ids"]) for encoded_dict in batch_encoded_dicts], batch_first=True,
         #     padding_value=0)
+
         batch_bert_dict = {"attention_mask": batch_attention_masks,
                            "input_ids": batch_input_ids,
                            # "token_type_ids": batch_token_type_ids

@@ -71,7 +71,7 @@ def model_predictions(model, data, vocab, device, batch_size=16):
     inference_st_time = time.time()
     final_sentences = []
     VALID_batch_size = batch_size
-    # print("data size: {}".format(len(data)))
+    # print("data size: {}".format(len(data)))    
     data_iter = batch_iter(data, batch_size=VALID_batch_size, shuffle=False)
     model.eval()
     model.to(device)
@@ -88,17 +88,21 @@ def model_predictions(model, data, vocab, device, batch_size=16):
         else:
             batch_labels, batch_sentences = batch_labels_, batch_sentences_
         batch_bert_inp = {k: v.to(device) for k, v in batch_bert_inp.items()}
+       
         # set batch data for others
         batch_labels_ids, batch_lengths = labelize(batch_labels, vocab)
         # batch_lengths = batch_lengths.to(device)
         batch_labels_ids = batch_labels_ids.to(device)
+      
         # forward
         with torch.no_grad():
             """
             NEW: batch_predictions can now be of shape (batch_size,batch_max_seq_len,topk) if topk>1, else (batch_size,batch_max_seq_len)
             """
             _, batch_predictions = model(batch_bert_inp, batch_bert_splits, targets=batch_labels_ids, topk=topk)
+        #print("BATCH PREDICTIONS: ", batch_predictions)
         batch_predictions = untokenize_without_unks(batch_predictions, batch_lengths, vocab, batch_labels)
+
         final_sentences.extend(batch_predictions)
     # print("total inference time for this data is: {:4f} secs".format(time.time()-inference_st_time))
     return final_sentences
