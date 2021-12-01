@@ -57,6 +57,10 @@ class Corrector(ABC):
         self.ckpt_path, self.vocab_path, self.weights_path = None, None, None
         self.model, self.vocab = None, None
 
+        self.reserved_vocab_path = kwargs.get("reserved_vocab_path", None)
+        self.reserved_vocab = kwargs.get("reserved_vocab", None)
+
+
         if not self._default_name:
 
             try:

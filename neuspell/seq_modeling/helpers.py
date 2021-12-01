@@ -22,7 +22,7 @@ from tqdm import tqdm
 BERT_MAX_SEQ_LEN = 512
 BERT_TOKENIZER = None
 
-RESERVED_WORDS = ["var, plece, ancestors, tehnologies, imagin, futbal, consumrs, joung, lifestayles, kofi, microvave, welty, compter, prajces"]
+# RESERVED_WORDS = ["var, plece, ancestors, tehnologies, imagin, futbal, consumrs, joung, lifestayles, kofi, microvave, welty, compter, prajces"]
 
 
 def progressBar(value, endvalue, names, values, bar_length=30):
@@ -623,6 +623,17 @@ def save_vocab_dict(path_: str, vocab_: dict):
 # For BERT Custom Tokenization
 ################################################
 
+def add_reserved_words(path):
+    """
+    :param path: path of the vocabulary with reserved words
+    :return: list of one string where the reserved words are seperated with comma
+    """
+    text_file = open(path, "r")
+    lines = text_file.read().split('\n')
+    text_file.close()
+    reserved_words = [", ".join(lines)]
+    return reserved_words
+
 
 def merge_subtokens(tokens: List):
     merged_tokens = []
@@ -665,7 +676,7 @@ def masking_reserved_words(reserved_words, inputs, attention_mask):
   # print("Attention mask: ", attention_mask)
   random = torch.rand(inputs.shape)
 
-  reserved_word_tokenized, _, _ = _custom_bert_tokenize_sentences(RESERVED_WORDS)
+  reserved_word_tokenized, _, _ = _custom_bert_tokenize_sentences(reserved_words)
   reserved_word_encoded_dict = [BERT_TOKENIZER.encode(tokens) for tokens in reserved_word_tokenized]
   reserved_tokens = reserved_word_encoded_dict[0]
 
@@ -745,7 +756,7 @@ def bert_tokenize(batch_sentences):
 
 
 
-def bert_tokenize_for_valid_examples(batch_orginal_sentences, batch_noisy_sentences, bert_pretrained_name_or_path=None):
+def bert_tokenize_for_valid_examples(batch_orginal_sentences, batch_noisy_sentences, bert_pretrained_name_or_path=None, reserved_words=None):
     """
     inputs:
         batch_noisy_sentences: List[str]
@@ -799,10 +810,20 @@ def bert_tokenize_for_valid_examples(batch_orginal_sentences, batch_noisy_senten
         #  [torch.tensor(encoded_dict["input_ids"]) for encoded_dict in batch_encoded_dicts], batch_first=True,
         #  padding_value=0)
 
-        batch_input_ids, batch_attention_masks = map(list, zip(*[masking_reserved_words(RESERVED_WORDS, torch.tensor(encoded_dict["input_ids"]), torch.tensor(encoded_dict["attention_mask"])) for encoded_dict in batch_encoded_dicts]))
+        RESERVED_WORDS = reserved_words
+        
+        if RESERVED_WORDS != None:
+          batch_input_ids, batch_attention_masks = map(list, zip(*[masking_reserved_words(RESERVED_WORDS, torch.tensor(encoded_dict["input_ids"]), torch.tensor(encoded_dict["attention_mask"])) for encoded_dict in batch_encoded_dicts]))
+          batch_input_ids = pad_sequence(batch_input_ids, batch_first=True, padding_value=0) 
+          batch_attention_masks = pad_sequence(batch_attention_masks, batch_first=True, padding_value=0) 
+       
+        else:
+          batch_attention_masks = pad_sequence(
+             [torch.tensor(encoded_dict["attention_mask"]) for encoded_dict in batch_encoded_dicts], batch_first=True, padding_value=0)
 
-        batch_input_ids = pad_sequence(batch_input_ids, batch_first=True, padding_value=0) 
-        batch_attention_masks = pad_sequence(batch_attention_masks, batch_first=True, padding_value=0) 
+          batch_input_ids = pad_sequence(
+            [torch.tensor(encoded_dict["input_ids"]) for encoded_dict in batch_encoded_dicts], batch_first=True, padding_value=0)
+        
 
         # batch_token_type_ids = pad_sequence(
         #     [torch.tensor(encoded_dict["token_type_ids"]) for encoded_dict in batch_encoded_dicts], batch_first=True,

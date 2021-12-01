@@ -9,6 +9,7 @@ from pytorch_pretrained_bert import BertAdam
 from .commons import DEFAULT_TRAINTEST_DATA_PATH
 from .corrector import Corrector
 from .seq_modeling.helpers import bert_tokenize_for_valid_examples
+from .seq_modeling.helpers import add_reserved_words
 from .seq_modeling.helpers import load_data, load_vocab_dict, save_vocab_dict
 from .seq_modeling.helpers import train_validation_split, batch_iter, labelize, progressBar, batch_accuracy_func
 from .seq_modeling.subwordbert import load_model, load_pretrained, model_predictions, model_inference
@@ -22,6 +23,7 @@ class BertChecker(Corrector):
         super().__init__(**kwargs)
 
         self.bert_pretrained_name_or_path = "bert-base-cased"
+        self.reserved_vocab = add_reserved_words(self.reserved_vocab_path) if self.reserved_vocab_path != None else None
 
     def load_model(self, ckpt_path):
         print(f"initializing model")
@@ -30,10 +32,12 @@ class BertChecker(Corrector):
 
     def correct_strings(self, mystrings: List[str], return_all=False) -> List[str]:
         self.is_model_ready()
-        mystrings = bert_tokenize_for_valid_examples(mystrings, mystrings, self.bert_pretrained_name_or_path)[0]
+        mystrings = bert_tokenize_for_valid_examples(mystrings, mystrings, self.bert_pretrained_name_or_path, self.reserved_vocab)[0]
+
         data = [(line, line) for line in mystrings]
         batch_size = 4 if self.device == "cpu" else 16
-        return_strings = model_predictions(self.model, data, self.vocab, device=self.device, batch_size=batch_size)
+        return_strings = model_predictions(self.model, data, self.vocab, device=self.device, batch_size=batch_size, reserved_words=self.reserved_vocab)
+        
         if return_all:
             return mystrings, return_strings
         else:
